@@ -24,10 +24,7 @@ def load_model_and_tokenizer(model_name: str = "kilian-group/LMLM-llama2-382M"):
 
     # Model
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        token=hf_token,
-        device_map="auto" if device.type != "cpu" else None,
-        torch_dtype=torch.float16 if device.type != "cpu" else torch.float32,
+        model_name, token=hf_token, device_map="auto", dtype=torch.float16
     )
 
     model.eval()
