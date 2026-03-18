@@ -12,6 +12,7 @@ wheels/
 # environment variables
 .env
 .env.*
+.hf/
 
 # pytest
 .pytest_cache/
