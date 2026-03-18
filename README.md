@@ -1,4 +1,4 @@
-# LMLM Audit: Auditing Forgetting in Limited Memory Language Models
+<h2 align="center">LMLM Audit: Auditing Forgetting in Limited Memory Language Models</h2>
 
 <p align="center">
   <strong>Project repository for auditing whether factual knowledge in Limited Memory Language Models is truly externalized and removable.</strong>
