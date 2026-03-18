@@ -1,7 +1,12 @@
 [project]
 name = "lmlm-audit"
 version = "0.1.0"
-description = "Add your description here"
+description = "A causal audit of forgetting and knowledge externalization in Limited Memory Language Models."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.10.8",
+    "numpy>=2.2.6",
+    "torch>=2.10.0",
+    "wandb>=0.25.1",
+]
