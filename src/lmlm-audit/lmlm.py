@@ -35,3 +35,5 @@ def load_model_and_tokenizer(model_name: str = "kilian-group/LMLM-llama2-382M"):
 if __name__ == "__main__":
     tokenizer, model = load_model_and_tokenizer()
     print("Model and tokenizer loaded successfully.")
+    print("Tokenizer vocab size:", tokenizer.vocab_size)
+    print("Model architecture:", model.config.architectures)
