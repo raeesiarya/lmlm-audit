@@ -5,7 +5,13 @@
 </p>
 
 <p align="center">
-  Hanna Roed, Arya Raeesi, Rohan Bijukumar
+  Hanna Roed, Arya Raeesi, Rohan Bijukumar<br>
+  <a href="mailto:hanna.roed@berkeley.edu">hanna.roed@berkeley.edu</a>,
+  <a href="mailto:aryaraeesi@berkeley.edu">aryaraeesi@berkeley.edu</a>,
+  <a href="mailto:rohanbijukumar@berkeley.edu">rohanbijukumar@berkeley.edu</a>
+</p>
+
+<p align="center">
 </p>
 
 <p align="center">
