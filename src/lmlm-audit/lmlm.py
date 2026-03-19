@@ -1,32 +1,38 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
 import os
+
+import torch
 from dotenv import load_dotenv
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-def load_model_and_tokenizer(model_name: str = "kilian-group/LMLM-llama2-382M"):
-    # Load token
+def _get_best_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+def load_model_and_tokenizer(
+    model_name: str = "kilian-group/LMLM-llama2-382M",
+) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
     load_dotenv()
     hf_token = os.getenv("HF_TOKEN")
 
-    # Device (CUDA + MPS support)
-    device = torch.device(
-        "cuda"
-        if torch.cuda.is_available()
-        else "mps"
-        if torch.backends.mps.is_available()
-        else "cpu"
-    )
+    device = _get_best_device()
     print("Using device:", device)
 
-    # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-    # Model
+    torch_dtype = torch.float16 if device.type == "cuda" else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
-        model_name, token=hf_token, device_map="auto", dtype=torch.float16
+        model_name,
+        token=hf_token,
+        torch_dtype=torch_dtype,
     )
-
+    model.to(device)
     model.eval()
 
     return tokenizer, model

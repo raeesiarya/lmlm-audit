@@ -11,9 +11,3 @@ def load_prompts(prompts_path: Path) -> list[dict[str, Any]]:
 if __name__ == "__main__":
     prompts_path = Path("data/prompts/prompts_direct_questions.jsonl")
     prompts = load_prompts(prompts_path)
-    print(f"Loaded {len(prompts)} prompts.")
-
-    for i, prompt in enumerate(prompts):
-        print(f"\nPrompt {i + 1}:")
-        print(json.dumps(prompt, indent=2, ensure_ascii=False))
-        print("-" * 50)
