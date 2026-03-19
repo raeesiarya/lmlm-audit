@@ -17,6 +17,10 @@ from prompting import load_prompts
 
 DEFAULT_PROMPT_DIR = Path("data/prompts")
 DEFAULT_OUTPUT_DIR = Path("outputs/audit")
+LOOKUP_VALUE_PATTERN = re.compile(
+    r"<\|db_entity\|>.*?<\|db_relationship\|>.*?<\|db_return\|>\s*(.*?)\s*<\|db_end\|>",
+    re.DOTALL,
+)
 
 
 def prepare_prompt(prompt_text: str) -> str:
@@ -57,13 +61,46 @@ def clean_answer(answer_text: str) -> str:
     return answer_text.strip(" \t\n\r\"'`,;:.")
 
 
+def extract_lookup_values(raw_output: str) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+
+    for match in LOOKUP_VALUE_PATTERN.findall(raw_output):
+        value = clean_answer(match)
+        if value and value not in seen:
+            values.append(value)
+            seen.add(value)
+
+    return values
+
+
+def choose_answer(
+    prompt_text: str,
+    processed_output: str,
+    lookup_values: list[str],
+) -> tuple[str, str]:
+    cleaned_output = clean_answer(processed_output)
+    is_fact_query = prompt_text.strip().endswith("?") or "____" in prompt_text
+
+    if lookup_values and is_fact_query:
+        return lookup_values[0], "lookup_value"
+
+    if cleaned_output:
+        return cleaned_output, "postprocessed_text"
+
+    if lookup_values:
+        return lookup_values[0], "lookup_value"
+
+    return "", "empty"
+
+
 def generate_answer(
     model: Any,
     tokenizer: Any,
     prompt_text: str,
     max_new_tokens: int = 12,
     enable_dblookup: bool = True,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, list[str], str, str]:
     prepared_prompt = prepare_prompt(prompt_text)
     raw_output = model.generate_with_lookup(
         prompt=prepared_prompt,
@@ -71,11 +108,23 @@ def generate_answer(
         max_new_tokens=max_new_tokens,
         enable_dblookup=enable_dblookup,
         enable_postprocess=False,
-        max_lookup_limit=1,
+        max_lookup_limit=3,
     )
     processed_output = str(model.post_process(raw_output, tokenizer)).strip()
-    cleaned_output = clean_answer(processed_output)
-    return prepared_prompt, processed_output, cleaned_output
+    lookup_values = extract_lookup_values(raw_output)
+    final_output, answer_source = choose_answer(
+        prompt_text=prompt_text,
+        processed_output=processed_output,
+        lookup_values=lookup_values,
+    )
+    return (
+        prepared_prompt,
+        raw_output,
+        processed_output,
+        lookup_values,
+        final_output,
+        answer_source,
+    )
 
 
 def run_prompt_audit(
@@ -85,7 +134,7 @@ def run_prompt_audit(
     max_new_tokens: int = 12,
     enable_dblookup: bool = True,
 ) -> dict[str, Any]:
-    prepared_prompt, raw_output, answer = generate_answer(
+    prepared_prompt, raw_output, processed_output, lookup_values, answer, answer_source = generate_answer(
         model=model,
         tokenizer=tokenizer,
         prompt_text=prompt_row["prompt_text"],
@@ -98,6 +147,9 @@ def run_prompt_audit(
         "enable_dblookup": enable_dblookup,
         "prepared_prompt": prepared_prompt,
         "raw_model_output": raw_output,
+        "postprocessed_output": processed_output,
+        "lookup_values": lookup_values,
+        "answer_source": answer_source,
         "model_output": answer,
     }
 
@@ -215,6 +267,12 @@ def main() -> None:
         print(f"Saved {len(results)} results to {output_path}")
         for result in results[: min(3, len(results))]:
             print(f"Prompt: {result['prompt_text']}")
+            if result["answer_source"] != "postprocessed_text":
+                print(f"Answer source: {result['answer_source']}")
+            if result["lookup_values"]:
+                print(f"Lookup values: {result['lookup_values'][:2]}")
+            if result["postprocessed_output"] and result["postprocessed_output"] != result["model_output"]:
+                print(f"Postprocessed: {result['postprocessed_output']}")
             if result["raw_model_output"] != result["model_output"]:
                 print(f"Raw answer: {result['raw_model_output']}")
             print(f"Answer: {result['model_output']}")
