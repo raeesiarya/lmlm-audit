@@ -15,9 +15,21 @@ def _get_best_device() -> torch.device:
     return torch.device("cpu")
 
 
+def _resolve_database_path(database_path: Path) -> Path:
+    if database_path.exists():
+        return database_path
+
+    if database_path.suffix == ".jsonl":
+        json_path = database_path.with_suffix(".json")
+        if json_path.exists():
+            return json_path
+
+    return database_path
+
+
 def load_model_and_tokenizer(
     model_name: str = "kilian-group/LMLM-llama2-382M",
-    database_path: str | Path = "data/lmlm_database.jsonl",
+    database_path: str | Path = "data/lmlm_database.json",
 ) -> tuple[Any, AutoTokenizer]:
     try:
         from lmlm.database import DatabaseManager
@@ -39,7 +51,7 @@ def load_model_and_tokenizer(
         tokenizer.pad_token = tokenizer.eos_token
 
     db_manager = DatabaseManager()
-    database_path = Path(database_path)
+    database_path = _resolve_database_path(Path(database_path))
     if database_path.exists():
         db_manager.load_database(str(database_path))
 
