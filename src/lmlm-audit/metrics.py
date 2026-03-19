@@ -18,6 +18,35 @@ def exact_match(prediction: str, ground_truth: str) -> float:
     return float(normalize_answer(prediction) == normalize_answer(ground_truth))
 
 
+def contains_match(prediction: str, ground_truth: str) -> float:
+    normalized_prediction = normalize_answer(prediction)
+    normalized_ground_truth = normalize_answer(ground_truth)
+
+    if not normalized_prediction or not normalized_ground_truth:
+        return 0.0
+
+    return float(
+        normalized_ground_truth in normalized_prediction
+        or normalized_prediction in normalized_ground_truth
+    )
+
+
+def is_unknown(prediction: str) -> float:
+    normalized_prediction = normalize_answer(prediction)
+    unknown_values = {
+        "",
+        "unknown",
+        "n a",
+        "na",
+        "none",
+        "no answer",
+        "i don't know",
+        "i do not know",
+        "i don t know",
+    }
+    return float(normalized_prediction in unknown_values)
+
+
 def precision_recall_f1(prediction: str, ground_truth: str) -> dict[str, float]:
     pred_tokens = tokenize(prediction)
     gold_tokens = tokenize(ground_truth)
@@ -46,6 +75,8 @@ def score_prediction(prediction: str, ground_truth: str) -> dict[str, float]:
     overlap_scores = precision_recall_f1(prediction, ground_truth)
     return {
         "exact_match": exact_match(prediction, ground_truth),
+        "contains_match": contains_match(prediction, ground_truth),
+        "unknown": is_unknown(prediction),
         **overlap_scores,
     }
 
@@ -55,6 +86,8 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, float]:
         return {
             "count": 0,
             "exact_match": 0.0,
+            "contains_match": 0.0,
+            "unknown_rate": 0.0,
             "precision": 0.0,
             "recall": 0.0,
             "f1": 0.0,
@@ -62,6 +95,8 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, float]:
 
     totals = {
         "exact_match": 0.0,
+        "contains_match": 0.0,
+        "unknown": 0.0,
         "precision": 0.0,
         "recall": 0.0,
         "f1": 0.0,
@@ -75,5 +110,10 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, float]:
     count = len(results)
     return {
         "count": count,
-        **{metric_name: value / count for metric_name, value in totals.items()},
+        "exact_match": totals["exact_match"] / count,
+        "contains_match": totals["contains_match"] / count,
+        "unknown_rate": totals["unknown"] / count,
+        "precision": totals["precision"] / count,
+        "recall": totals["recall"] / count,
+        "f1": totals["f1"] / count,
     }

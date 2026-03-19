@@ -340,10 +340,9 @@ def main() -> None:
 
         print("Metrics:")
         print(f"Count: {metrics['count']}")
-        print(
-            "Exact match: "
-            f"{metrics['exact_match']:.3f}"
-        )
+        print(f"Exact match: {metrics['exact_match']:.3f}")
+        print(f"Contains match: {metrics['contains_match']:.3f}")
+        print(f"Unknown rate: {metrics['unknown_rate']:.3f}")
         print(f"Precision: {metrics['precision']:.3f}")
         print(f"Recall: {metrics['recall']:.3f}")
         print(f"F1: {metrics['f1']:.3f}")
