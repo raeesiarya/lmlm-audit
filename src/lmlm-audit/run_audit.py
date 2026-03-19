@@ -113,7 +113,7 @@ def generate_answer(
     prompt_text: str,
     max_new_tokens: int = 12,
     enable_dblookup: bool = True,
-) -> tuple[str, str, str, list[str], str, str]:
+) -> str:
     prepared_prompt = prepare_prompt(prompt_text)
     generation_budget = compute_generation_budget(
         tokenizer=tokenizer,
@@ -130,19 +130,12 @@ def generate_answer(
     )
     processed_output = str(model.post_process(raw_output, tokenizer)).strip()
     lookup_values = extract_lookup_values(raw_output)
-    final_output, answer_source = choose_answer(
+    final_output, _ = choose_answer(
         prompt_text=prompt_text,
         processed_output=processed_output,
         lookup_values=lookup_values,
     )
-    return (
-        prepared_prompt,
-        raw_output,
-        processed_output,
-        lookup_values,
-        final_output,
-        answer_source,
-    )
+    return final_output
 
 
 def run_prompt_audit(
@@ -152,14 +145,7 @@ def run_prompt_audit(
     max_new_tokens: int = 12,
     enable_dblookup: bool = True,
 ) -> dict[str, Any]:
-    (
-        prepared_prompt,
-        raw_output,
-        processed_output,
-        lookup_values,
-        answer,
-        answer_source,
-    ) = generate_answer(
+    answer = generate_answer(
         model=model,
         tokenizer=tokenizer,
         prompt_text=prompt_row["prompt_text"],
@@ -168,13 +154,8 @@ def run_prompt_audit(
     )
 
     return {
-        **prompt_row,
-        "enable_dblookup": enable_dblookup,
-        "prepared_prompt": prepared_prompt,
-        "raw_model_output": raw_output,
-        "postprocessed_output": processed_output,
-        "lookup_values": lookup_values,
-        "answer_source": answer_source,
+        "prompt": prompt_row["prompt_text"],
+        "ground_truth": prompt_row["gold_object"],
         "model_output": answer,
     }
 
@@ -291,18 +272,8 @@ def main() -> None:
 
         print(f"Saved {len(results)} results to {output_path}")
         for result in results[: min(3, len(results))]:
-            print(f"Prompt: {result['prompt_text']}")
-            if result["answer_source"] != "postprocessed_text":
-                print(f"Answer source: {result['answer_source']}")
-            if result["lookup_values"]:
-                print(f"Lookup values: {result['lookup_values'][:2]}")
-            if (
-                result["postprocessed_output"]
-                and result["postprocessed_output"] != result["model_output"]
-            ):
-                print(f"Postprocessed: {result['postprocessed_output']}")
-            if result["raw_model_output"] != result["model_output"]:
-                print(f"Raw answer: {result['raw_model_output']}")
+            print(f"Prompt: {result['prompt']}")
+            print(f"Ground truth: {result['ground_truth']}")
             print(f"Answer: {result['model_output']}")
             print("-" * 50)
 
