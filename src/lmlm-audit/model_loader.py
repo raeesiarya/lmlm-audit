@@ -30,6 +30,8 @@ def _resolve_database_path(database_path: Path) -> Path:
 def load_model_and_tokenizer(
     model_name: str = "kilian-group/LMLM-llama2-382M",
     database_path: str | Path = "data/lmlm_database.json",
+    threshold: float = 0.6,
+    fallback_policy: str = "top1_anyway",
 ) -> tuple[Any, AutoTokenizer]:
     try:
         from lmlm.database import DatabaseManager
@@ -59,6 +61,8 @@ def load_model_and_tokenizer(
         model_name,
         db_manager=db_manager,
         use_special_tokens=True,
+        threshold=threshold,
+        fallback_policy=fallback_policy,
         token=hf_token,
     )
     model.to(device)
