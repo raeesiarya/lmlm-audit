@@ -2,8 +2,12 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any
-import torch
-from tqdm import tqdm
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable: Any, **_: Any) -> Any:
+        return iterable
 
 from prompting import load_prompts
 
@@ -17,21 +21,17 @@ def generate_answer(
     tokenizer: Any,
     prompt_text: str,
     max_new_tokens: int = 32,
+    enable_dblookup: bool = True,
 ) -> str:
-    inputs = tokenizer(prompt_text, return_tensors="pt", truncation=True)
-    model_device = next(model.parameters()).device
-    inputs = {key: value.to(model_device) for key, value in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            pad_token_id=tokenizer.pad_token_id,
-        )
-
-    prompt_length = inputs["input_ids"].shape[1]
-    generated_ids = outputs[0][prompt_length:]
-    return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+    output = model.generate_with_lookup(
+        prompt=prompt_text,
+        tokenizer=tokenizer,
+        max_new_tokens=max_new_tokens,
+        enable_dblookup=enable_dblookup,
+        enable_postprocess=False,
+    )
+    processed_output = model.post_process(output, tokenizer)
+    return str(processed_output).strip()
 
 
 def run_prompt_audit(
@@ -39,16 +39,19 @@ def run_prompt_audit(
     tokenizer: Any,
     prompt_row: dict[str, Any],
     max_new_tokens: int = 32,
+    enable_dblookup: bool = True,
 ) -> dict[str, Any]:
     answer = generate_answer(
         model=model,
         tokenizer=tokenizer,
         prompt_text=prompt_row["prompt_text"],
         max_new_tokens=max_new_tokens,
+        enable_dblookup=enable_dblookup,
     )
 
     return {
         **prompt_row,
+        "enable_dblookup": enable_dblookup,
         "model_output": answer,
     }
 
@@ -59,6 +62,7 @@ def run_audit(
     tokenizer: Any,
     max_new_tokens: int = 32,
     limit: int | None = None,
+    enable_dblookup: bool = True,
 ) -> list[dict[str, Any]]:
     prompts = load_prompts(prompt_path)
     if limit is not None:
@@ -70,6 +74,7 @@ def run_audit(
             tokenizer=tokenizer,
             prompt_row=prompt,
             max_new_tokens=max_new_tokens,
+            enable_dblookup=enable_dblookup,
         )
         for prompt in prompts
     ]
@@ -95,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-new-tokens",
         type=int,
-        default=32,
+        default=16,
         help="Maximum number of tokens to generate per prompt.",
     )
     parser.add_argument(
@@ -109,6 +114,23 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT_DIR,
         help="Directory where JSONL audit results will be written.",
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="kilian-group/LMLM-llama2-382M",
+        help="Model checkpoint to load.",
+    )
+    parser.add_argument(
+        "--database-path",
+        type=Path,
+        default=Path("data/lmlm_database.jsonl"),
+        help="Path to the local LMLM database JSONL.",
+    )
+    parser.add_argument(
+        "--disable-dblookup",
+        action="store_true",
+        help="Disable external database lookup during generation.",
     )
     return parser.parse_args()
 
@@ -124,9 +146,12 @@ def main() -> None:
     if not prompt_paths:
         raise FileNotFoundError(f"No prompt files found in {DEFAULT_PROMPT_DIR}.")
 
-    from lmlm import load_model_and_tokenizer
+    from model_loader import load_model_and_tokenizer
 
-    tokenizer, model = load_model_and_tokenizer()
+    model, tokenizer = load_model_and_tokenizer(
+        model_name=args.model_name,
+        database_path=args.database_path,
+    )
 
     for prompt_path in tqdm(prompt_paths, desc="Auditing prompts"):
         results = run_audit(
@@ -135,6 +160,7 @@ def main() -> None:
             tokenizer=tokenizer,
             max_new_tokens=args.max_new_tokens,
             limit=args.limit,
+            enable_dblookup=not args.disable_dblookup,
         )
 
         output_path = args.output_dir / f"{prompt_path.stem}_results.jsonl"

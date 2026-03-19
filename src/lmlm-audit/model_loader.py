@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
+from typing import Any
 
 import torch
 from dotenv import load_dotenv
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 
 
 def _get_best_device() -> torch.device:
@@ -15,7 +17,17 @@ def _get_best_device() -> torch.device:
 
 def load_model_and_tokenizer(
     model_name: str = "kilian-group/LMLM-llama2-382M",
-) -> tuple[AutoTokenizer, AutoModelForCausalLM]:
+    database_path: str | Path = "data/lmlm_database.jsonl",
+) -> tuple[Any, AutoTokenizer]:
+    try:
+        from lmlm.database import DatabaseManager
+        from lmlm.modeling_lmlm import LlamaForLMLM
+    except ImportError as exc:
+        raise ImportError(
+            "The upstream `lmlm` package is required for lookup-aware inference. "
+            "Install the original LMLM repository in your environment before running this script."
+        ) from exc
+
     load_dotenv()
     hf_token = os.getenv("HF_TOKEN")
 
@@ -26,20 +38,25 @@ def load_model_and_tokenizer(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    torch_dtype = torch.float16 if device.type == "cuda" else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(
+    db_manager = DatabaseManager()
+    database_path = Path(database_path)
+    if database_path.exists():
+        db_manager.load_database(str(database_path))
+
+    model = LlamaForLMLM.from_pretrained_with_db(
         model_name,
+        db_manager=db_manager,
+        use_special_tokens=True,
         token=hf_token,
-        torch_dtype=torch_dtype,
     )
     model.to(device)
     model.eval()
 
-    return tokenizer, model
+    return model, tokenizer
 
 
 if __name__ == "__main__":
-    tokenizer, model = load_model_and_tokenizer()
+    model, tokenizer = load_model_and_tokenizer()
     print("Model and tokenizer loaded successfully.")
     print("Tokenizer vocab size:", tokenizer.vocab_size)
     print("Model architecture:", model.config.architectures)
