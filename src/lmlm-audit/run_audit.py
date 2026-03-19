@@ -3,13 +3,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-
-try:
-    from tqdm import tqdm
-except ImportError:
-
-    def tqdm(iterable: Any, **_: Any) -> Any:
-        return iterable
+from tqdm import tqdm
 
 
 from prompting import load_prompts
@@ -369,14 +363,6 @@ def main() -> None:
             )
             for state in states
         }
-
-        print(f"Saved {len(results)} results to {output_path}")
-        for result in results:
-            print(f"State: {result['state']}")
-            print(f"Prompt: {result['prompt']}")
-            print(f"Ground truth: {result['ground_truth']}")
-            print(f"Answer: {result['model_output']}")
-            print("-" * 50)
 
         print("Metrics by state:")
         for state in states:
