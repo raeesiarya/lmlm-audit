@@ -22,7 +22,7 @@ wheels/
 # Weights & Biases
 wandb
 
-# Hydra
+# Logging
 outputs/
 
 # uv
