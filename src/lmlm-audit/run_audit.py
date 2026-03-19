@@ -3,17 +3,12 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-
-try:
-    from tqdm import tqdm
-except ImportError:
-
-    def tqdm(iterable: Any, **_: Any) -> Any:
-        return iterable
+from tqdm import tqdm
 
 
 from prompting import load_prompts
 from metrics import summarize_results
+from database_states import DatabaseState, build_state_db_manager, retrieval_enabled
 
 
 DEFAULT_PROMPT_DIR = Path("data/prompts")
@@ -199,21 +194,31 @@ def generate_answer(
 
 
 def run_prompt_audit(
+    base_db_manager: Any,
     model: Any,
     tokenizer: Any,
     prompt_row: dict[str, Any],
+    state: DatabaseState,
     max_new_tokens: int = 12,
-    enable_dblookup: bool = True,
 ) -> dict[str, Any]:
+    model.db_manager = build_state_db_manager(
+        base_db_manager=base_db_manager,
+        prompt_row=prompt_row,
+        state=state,
+    )
     answer = generate_answer(
         model=model,
         tokenizer=tokenizer,
         prompt_text=prompt_row["prompt_text"],
         max_new_tokens=max_new_tokens,
-        enable_dblookup=enable_dblookup,
+        enable_dblookup=retrieval_enabled(state),
     )
 
     return {
+        "fact_id": prompt_row["fact_id"],
+        "subject": prompt_row["subject"],
+        "relation": prompt_row["relation"],
+        "state": state.value,
         "prompt": prompt_row["prompt_text"],
         "ground_truth": prompt_row["gold_object"],
         "model_output": answer,
@@ -222,11 +227,12 @@ def run_prompt_audit(
 
 def run_audit(
     prompt_path: Path,
+    base_db_manager: Any,
     model: Any,
     tokenizer: Any,
+    states: list[DatabaseState],
     max_new_tokens: int = 12,
     limit: int | None = None,
-    enable_dblookup: bool = True,
 ) -> list[dict[str, Any]]:
     prompts = load_prompts(prompt_path)
     if limit is not None:
@@ -238,15 +244,17 @@ def run_audit(
         desc=f"Auditing {prompt_path.stem}",
         unit="prompt",
     ):
-        results.append(
-            run_prompt_audit(
-                model=model,
-                tokenizer=tokenizer,
-                prompt_row=prompt,
-                max_new_tokens=max_new_tokens,
-                enable_dblookup=enable_dblookup,
+        for state in states:
+            results.append(
+                run_prompt_audit(
+                    base_db_manager=base_db_manager,
+                    model=model,
+                    tokenizer=tokenizer,
+                    prompt_row=prompt,
+                    state=state,
+                    max_new_tokens=max_new_tokens,
+                )
             )
-        )
 
     return results
 
@@ -301,7 +309,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--disable-dblookup",
         action="store_true",
-        help="Disable external database lookup during generation.",
+        help="Deprecated shortcut for running only the DEL-OFF state.",
+    )
+    parser.add_argument(
+        "--states",
+        nargs="*",
+        default=[state.value for state in DatabaseState],
+        choices=[state.value for state in DatabaseState],
+        help="Database states to evaluate.",
     )
     return parser.parse_args()
 
@@ -323,36 +338,43 @@ def main() -> None:
         model_name=args.model_name,
         database_path=args.database_path,
     )
+    base_db_manager = model.db_manager
+    state_values = [DatabaseState(state) for state in args.states]
+    if args.disable_dblookup:
+        state_values = [DatabaseState.DEL_OFF]
+    states = state_values
 
     for prompt_path in prompt_paths:
         results = run_audit(
             prompt_path=prompt_path,
+            base_db_manager=base_db_manager,
             model=model,
             tokenizer=tokenizer,
+            states=states,
             max_new_tokens=args.max_new_tokens,
             limit=args.limit,
-            enable_dblookup=not args.disable_dblookup,
         )
 
         output_path = args.output_dir / f"{prompt_path.stem}_results.jsonl"
         save_results(results, output_path)
-        metrics = summarize_results(results)
+        metrics_by_state = {
+            state.value: summarize_results(
+                [result for result in results if result["state"] == state.value]
+            )
+            for state in states
+        }
 
-        print(f"Saved {len(results)} results to {output_path}")
-        for result in results:
-            print(f"Prompt: {result['prompt']}")
-            print(f"Ground truth: {result['ground_truth']}")
-            print(f"Answer: {result['model_output']}")
-            print("-" * 50)
-
-        print("Metrics:")
-        print(f"Count: {metrics['count']}")
-        print(f"Exact match: {metrics['exact_match']:.3f}")
-        print(f"Contains match: {metrics['contains_match']:.3f}")
-        print(f"Unknown rate: {metrics['unknown_rate']:.3f}")
-        print(f"Precision: {metrics['precision']:.3f}")
-        print(f"Recall: {metrics['recall']:.3f}")
-        print(f"F1: {metrics['f1']:.3f}")
+        print("Metrics by state:")
+        for state in states:
+            metrics = metrics_by_state[state.value]
+            print(f"{state.value}:")
+            print(f"  Count: {metrics['count']}")
+            print(f"  Exact match: {metrics['exact_match']:.3f}")
+            print(f"  Contains match: {metrics['contains_match']:.3f}")
+            print(f"  Unknown rate: {metrics['unknown_rate']:.3f}")
+            print(f"  Precision: {metrics['precision']:.3f}")
+            print(f"  Recall: {metrics['recall']:.3f}")
+            print(f"  F1: {metrics['f1']:.3f}")
 
 
 if __name__ == "__main__":
