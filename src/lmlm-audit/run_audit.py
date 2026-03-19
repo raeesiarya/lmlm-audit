@@ -107,6 +107,23 @@ def compute_generation_budget(
     return max(32, prompt_token_count + target_answer_tokens + 16)
 
 
+def retrieve_lookup_value(model: Any, lookup_query: str) -> str:
+    db_manager = getattr(model, "db_manager", None)
+    if db_manager is None:
+        return "unknown"
+
+    try:
+        return db_manager.retrieve_from_database(lookup_query)
+    except Exception:
+        fallback_policy = getattr(model, "fallback_policy", "top1_anyway")
+        if fallback_policy == "top1_anyway":
+            try:
+                return db_manager.retrieve_from_database(lookup_query, threshold=-1.0)
+            except Exception:
+                return "unknown"
+        return "unknown"
+
+
 def generate_answer(
     model: Any,
     tokenizer: Any,
@@ -120,14 +137,56 @@ def generate_answer(
         prompt_text=prepared_prompt,
         target_answer_tokens=max_new_tokens,
     )
-    raw_output = model.generate_with_lookup(
-        prompt=prepared_prompt,
-        tokenizer=tokenizer,
-        max_new_tokens=generation_budget,
-        enable_dblookup=enable_dblookup,
-        enable_postprocess=False,
-        max_lookup_limit=3,
-    )
+
+    if enable_dblookup:
+        model.eval()
+        device = next(model.parameters()).device
+        model.set_logits_bias(tokenizer)
+
+        stop_token_ids = [
+            tokenizer.convert_tokens_to_ids("<|db_return|>"),
+            tokenizer.eos_token_id,
+            tokenizer.convert_tokens_to_ids("<|end_of_text|>"),
+        ]
+        stop_token_ids = [
+            token_id
+            for token_id in stop_token_ids
+            if token_id is not None and token_id != tokenizer.unk_token_id
+        ]
+
+        inputs = tokenizer(prepared_prompt, return_tensors="pt").to(device)
+        input_len = inputs["input_ids"].shape[1]
+
+        outputs = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            logits_processor=model.logits_processor,
+            max_new_tokens=generation_budget,
+            repetition_penalty=1.2,
+            pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+            return_dict_in_generate=False,
+            do_sample=False,
+            eos_token_id=stop_token_ids,
+        )
+
+        raw_output = model._decode_with_special_tokens(
+            outputs,
+            tokenizer,
+            input_len,
+            prepared_prompt,
+        )
+
+        if "<|db_return|>" in raw_output:
+            return clean_answer(retrieve_lookup_value(model, raw_output))
+    else:
+        raw_output = model.generate_with_lookup(
+            prompt=prepared_prompt,
+            tokenizer=tokenizer,
+            max_new_tokens=generation_budget,
+            enable_dblookup=False,
+            enable_postprocess=False,
+        )
+
     processed_output = str(model.post_process(raw_output, tokenizer)).strip()
     lookup_values = extract_lookup_values(raw_output)
     final_output, _ = choose_answer(
