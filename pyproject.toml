@@ -16,6 +16,7 @@ dependencies = [
     "transformers>=4.49,<4.50",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
+    "wandb>=0.25.0",
 ]
 
 [tool.uv.sources]

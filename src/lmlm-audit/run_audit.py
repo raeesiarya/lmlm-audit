@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -11,8 +12,10 @@ from metrics import summarize_results
 from database_states import DatabaseState, build_state_db_manager, retrieval_enabled
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROMPT_DIR = Path("data/prompts")
 DEFAULT_OUTPUT_DIR = Path("outputs/audit")
+WANDB_PROJECT = "lmlm-audit"
 LOOKUP_VALUE_PATTERN = re.compile(
     r"<\|db_entity\|>.*?<\|db_relationship\|>.*?<\|db_return\|>\s*(.*?)\s*<\|db_end\|>",
     re.DOTALL,
@@ -267,6 +270,53 @@ def save_results(results: list[dict[str, Any]], output_path: Path) -> None:
             f.write("\n")
 
 
+def setup_wandb() -> Any:
+    from dotenv import load_dotenv
+
+    env_path = PROJECT_ROOT / ".env"
+    load_dotenv(env_path, override=True)
+
+    api_key = os.getenv("WANDB_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            f"WANDB_API_KEY was not found after loading {env_path}."
+        )
+
+    import wandb
+
+    wandb.login(key=api_key, relogin=True)
+    return wandb
+
+
+def log_metrics_to_wandb(
+    wandb_module: Any,
+    prompt_path: Path,
+    state: DatabaseState,
+    metrics: dict[str, float],
+    model_name: str,
+    database_path: Path,
+    max_new_tokens: int,
+    limit: int | None,
+) -> None:
+    run_name = f"{prompt_path.stem}_{state.value}"
+    run = wandb_module.init(
+        project=WANDB_PROJECT,
+        name=run_name,
+        config={
+            "prompt_file": str(prompt_path),
+            "state": state.value,
+            "model_name": model_name,
+            "database_path": str(database_path),
+            "max_new_tokens": max_new_tokens,
+            "limit": limit,
+        },
+        reinit=True,
+    )
+    run.log(metrics)
+    run.summary.update(metrics)
+    run.finish()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the prompt audit.")
     parser.add_argument(
@@ -343,6 +393,7 @@ def main() -> None:
     if args.disable_dblookup:
         state_values = [DatabaseState.DEL_OFF]
     states = state_values
+    wandb_module = setup_wandb()
 
     for prompt_path in prompt_paths:
         results = run_audit(
@@ -375,6 +426,17 @@ def main() -> None:
             print(f"  Precision: {metrics['precision']:.3f}")
             print(f"  Recall: {metrics['recall']:.3f}")
             print(f"  F1: {metrics['f1']:.3f}")
+            log_metrics_to_wandb(
+                wandb_module=wandb_module,
+                prompt_path=prompt_path,
+                state=state,
+                metrics=metrics,
+                model_name=args.model_name,
+                database_path=args.database_path,
+                max_new_tokens=args.max_new_tokens,
+                limit=args.limit,
+            )
+            print(f"  W&B run: {prompt_path.stem}_{state.value}")
 
 
 if __name__ == "__main__":
