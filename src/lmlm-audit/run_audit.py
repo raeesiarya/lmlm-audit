@@ -13,6 +13,7 @@ except ImportError:
 
 
 from prompting import load_prompts
+from metrics import summarize_results
 
 
 DEFAULT_PROMPT_DIR = Path("data/prompts")
@@ -328,6 +329,7 @@ def main() -> None:
 
         output_path = args.output_dir / f"{prompt_path.stem}_results.jsonl"
         save_results(results, output_path)
+        metrics = summarize_results(results)
 
         print(f"Saved {len(results)} results to {output_path}")
         for result in results:
@@ -335,6 +337,16 @@ def main() -> None:
             print(f"Ground truth: {result['ground_truth']}")
             print(f"Answer: {result['model_output']}")
             print("-" * 50)
+
+        print("Metrics:")
+        print(f"Count: {metrics['count']}")
+        print(
+            "Exact match: "
+            f"{metrics['exact_match']:.3f}"
+        )
+        print(f"Precision: {metrics['precision']:.3f}")
+        print(f"Recall: {metrics['recall']:.3f}")
+        print(f"F1: {metrics['f1']:.3f}")
 
 
 if __name__ == "__main__":
