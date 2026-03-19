@@ -330,7 +330,7 @@ def main() -> None:
         save_results(results, output_path)
 
         print(f"Saved {len(results)} results to {output_path}")
-        for result in results[: min(3, len(results))]:
+        for result in results:
             print(f"Prompt: {result['prompt']}")
             print(f"Ground truth: {result['ground_truth']}")
             print(f"Answer: {result['model_output']}")
