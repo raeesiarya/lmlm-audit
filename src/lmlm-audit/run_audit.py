@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,32 +17,85 @@ DEFAULT_PROMPT_DIR = Path("data/prompts")
 DEFAULT_OUTPUT_DIR = Path("outputs/audit")
 
 
+def prepare_prompt(prompt_text: str) -> str:
+    prompt_text = prompt_text.strip()
+
+    if "Answer:" in prompt_text:
+        return prompt_text
+
+    if "Question:" in prompt_text:
+        return f"{prompt_text}\nAnswer:"
+
+    if "____" in prompt_text:
+        return f"{prompt_text}\nAnswer:"
+
+    if prompt_text.endswith("?"):
+        return f"Answer with a short factual phrase.\nQuestion: {prompt_text}\nAnswer:"
+
+    return prompt_text
+
+
+def clean_answer(answer_text: str) -> str:
+    answer_text = answer_text.strip()
+
+    while answer_text.lower().startswith("answer:"):
+        answer_text = answer_text[len("answer:"):].strip()
+
+    for prefix in ("the answer is ", "it is ", "it's "):
+        if answer_text.lower().startswith(prefix):
+            answer_text = answer_text[len(prefix):].strip()
+            break
+
+    stop_markers = [
+        "\nQuestion:",
+        "\nContext:",
+        "\nFact:",
+        "\nPrompt:",
+        "\nAnswer:",
+        "\n\n",
+    ]
+    for marker in stop_markers:
+        if marker in answer_text:
+            answer_text = answer_text.split(marker, 1)[0].strip()
+
+    answer_text = re.sub(r"\s+", " ", answer_text).strip()
+    answer_text = answer_text.strip(" \t\n\r\"'`")
+
+    # Keep the first sentence when the model starts elaborating.
+    answer_text = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", answer_text, maxsplit=1)[0].strip()
+
+    return answer_text.strip(" \t\n\r\"'`,;:.")
+
+
 def generate_answer(
     model: Any,
     tokenizer: Any,
     prompt_text: str,
-    max_new_tokens: int = 32,
+    max_new_tokens: int = 12,
     enable_dblookup: bool = True,
-) -> str:
-    output = model.generate_with_lookup(
-        prompt=prompt_text,
+) -> tuple[str, str, str]:
+    prepared_prompt = prepare_prompt(prompt_text)
+    raw_output = model.generate_with_lookup(
+        prompt=prepared_prompt,
         tokenizer=tokenizer,
         max_new_tokens=max_new_tokens,
         enable_dblookup=enable_dblookup,
         enable_postprocess=False,
+        max_lookup_limit=1,
     )
-    processed_output = model.post_process(output, tokenizer)
-    return str(processed_output).strip()
+    processed_output = str(model.post_process(raw_output, tokenizer)).strip()
+    cleaned_output = clean_answer(processed_output)
+    return prepared_prompt, processed_output, cleaned_output
 
 
 def run_prompt_audit(
     model: Any,
     tokenizer: Any,
     prompt_row: dict[str, Any],
-    max_new_tokens: int = 32,
+    max_new_tokens: int = 12,
     enable_dblookup: bool = True,
 ) -> dict[str, Any]:
-    answer = generate_answer(
+    prepared_prompt, raw_output, answer = generate_answer(
         model=model,
         tokenizer=tokenizer,
         prompt_text=prompt_row["prompt_text"],
@@ -52,6 +106,8 @@ def run_prompt_audit(
     return {
         **prompt_row,
         "enable_dblookup": enable_dblookup,
+        "prepared_prompt": prepared_prompt,
+        "raw_model_output": raw_output,
         "model_output": answer,
     }
 
@@ -60,7 +116,7 @@ def run_audit(
     prompt_path: Path,
     model: Any,
     tokenizer: Any,
-    max_new_tokens: int = 32,
+    max_new_tokens: int = 12,
     limit: int | None = None,
     enable_dblookup: bool = True,
 ) -> list[dict[str, Any]]:
@@ -100,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-new-tokens",
         type=int,
-        default=16,
+        default=12,
         help="Maximum number of tokens to generate per prompt.",
     )
     parser.add_argument(
@@ -124,8 +180,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--database-path",
         type=Path,
-        default=Path("data/lmlm_database.jsonl"),
-        help="Path to the local LMLM database JSONL.",
+        default=Path("data/lmlm_database.json"),
+        help="Path to the local LMLM database JSON file.",
     )
     parser.add_argument(
         "--disable-dblookup",
@@ -169,6 +225,8 @@ def main() -> None:
         print(f"Saved {len(results)} results to {output_path}")
         for result in results[: min(3, len(results))]:
             print(f"Prompt: {result['prompt_text']}")
+            if result["raw_model_output"] != result["model_output"]:
+                print(f"Raw answer: {result['raw_model_output']}")
             print(f"Answer: {result['model_output']}")
             print("-" * 50)
 
