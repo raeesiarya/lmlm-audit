@@ -232,16 +232,23 @@ def run_audit(
     if limit is not None:
         prompts = prompts[:limit]
 
-    return [
-        run_prompt_audit(
-            model=model,
-            tokenizer=tokenizer,
-            prompt_row=prompt,
-            max_new_tokens=max_new_tokens,
-            enable_dblookup=enable_dblookup,
+    results: list[dict[str, Any]] = []
+    for prompt in tqdm(
+        prompts,
+        desc=f"Auditing {prompt_path.stem}",
+        unit="prompt",
+    ):
+        results.append(
+            run_prompt_audit(
+                model=model,
+                tokenizer=tokenizer,
+                prompt_row=prompt,
+                max_new_tokens=max_new_tokens,
+                enable_dblookup=enable_dblookup,
+            )
         )
-        for prompt in prompts
-    ]
+
+    return results
 
 
 def save_results(results: list[dict[str, Any]], output_path: Path) -> None:
@@ -317,7 +324,7 @@ def main() -> None:
         database_path=args.database_path,
     )
 
-    for prompt_path in tqdm(prompt_paths, desc="Auditing prompts"):
+    for prompt_path in prompt_paths:
         results = run_audit(
             prompt_path=prompt_path,
             model=model,
