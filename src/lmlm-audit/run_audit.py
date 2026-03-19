@@ -152,7 +152,14 @@ def run_prompt_audit(
     max_new_tokens: int = 12,
     enable_dblookup: bool = True,
 ) -> dict[str, Any]:
-    prepared_prompt, raw_output, processed_output, lookup_values, answer, answer_source = generate_answer(
+    (
+        prepared_prompt,
+        raw_output,
+        processed_output,
+        lookup_values,
+        answer,
+        answer_source,
+    ) = generate_answer(
         model=model,
         tokenizer=tokenizer,
         prompt_text=prompt_row["prompt_text"],
@@ -289,7 +296,10 @@ def main() -> None:
                 print(f"Answer source: {result['answer_source']}")
             if result["lookup_values"]:
                 print(f"Lookup values: {result['lookup_values'][:2]}")
-            if result["postprocessed_output"] and result["postprocessed_output"] != result["model_output"]:
+            if (
+                result["postprocessed_output"]
+                and result["postprocessed_output"] != result["model_output"]
+            ):
                 print(f"Postprocessed: {result['postprocessed_output']}")
             if result["raw_model_output"] != result["model_output"]:
                 print(f"Raw answer: {result['raw_model_output']}")
