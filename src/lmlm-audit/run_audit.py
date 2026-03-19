@@ -7,8 +7,10 @@ from typing import Any
 try:
     from tqdm import tqdm
 except ImportError:
+
     def tqdm(iterable: Any, **_: Any) -> Any:
         return iterable
+
 
 from prompting import load_prompts
 
@@ -18,32 +20,18 @@ DEFAULT_OUTPUT_DIR = Path("outputs/audit")
 
 
 def prepare_prompt(prompt_text: str) -> str:
-    prompt_text = prompt_text.strip()
-
-    if "Answer:" in prompt_text:
-        return prompt_text
-
-    if "Question:" in prompt_text:
-        return f"{prompt_text}\nAnswer:"
-
-    if "____" in prompt_text:
-        return f"{prompt_text}\nAnswer:"
-
-    if prompt_text.endswith("?"):
-        return f"Answer with a short factual phrase.\nQuestion: {prompt_text}\nAnswer:"
-
-    return prompt_text
+    return prompt_text.strip()
 
 
 def clean_answer(answer_text: str) -> str:
     answer_text = answer_text.strip()
 
     while answer_text.lower().startswith("answer:"):
-        answer_text = answer_text[len("answer:"):].strip()
+        answer_text = answer_text[len("answer:") :].strip()
 
     for prefix in ("the answer is ", "it is ", "it's "):
         if answer_text.lower().startswith(prefix):
-            answer_text = answer_text[len(prefix):].strip()
+            answer_text = answer_text[len(prefix) :].strip()
             break
 
     stop_markers = [
@@ -62,7 +50,9 @@ def clean_answer(answer_text: str) -> str:
     answer_text = answer_text.strip(" \t\n\r\"'`")
 
     # Keep the first sentence when the model starts elaborating.
-    answer_text = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", answer_text, maxsplit=1)[0].strip()
+    answer_text = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", answer_text, maxsplit=1)[
+        0
+    ].strip()
 
     return answer_text.strip(" \t\n\r\"'`,;:.")
 
