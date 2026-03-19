@@ -278,9 +278,7 @@ def setup_wandb() -> Any:
 
     api_key = os.getenv("WANDB_API_KEY")
     if not api_key:
-        raise RuntimeError(
-            f"WANDB_API_KEY was not found after loading {env_path}."
-        )
+        raise RuntimeError(f"WANDB_API_KEY was not found after loading {env_path}.")
 
     import wandb
 
@@ -368,6 +366,13 @@ def parse_args() -> argparse.Namespace:
         choices=[state.value for state in DatabaseState],
         help="Database states to evaluate.",
     )
+    parser.add_argument(
+        "--wandb_activation",
+        type=str,
+        default="off",
+        choices=["on", "off"],
+        help="Enable or disable Weights & Biases logging.",
+    )
     return parser.parse_args()
 
 
@@ -393,7 +398,7 @@ def main() -> None:
     if args.disable_dblookup:
         state_values = [DatabaseState.DEL_OFF]
     states = state_values
-    wandb_module = setup_wandb()
+    wandb_module = setup_wandb() if args.wandb_activation == "on" else None
 
     for prompt_path in prompt_paths:
         results = run_audit(
@@ -426,17 +431,18 @@ def main() -> None:
             print(f"  Precision: {metrics['precision']:.3f}")
             print(f"  Recall: {metrics['recall']:.3f}")
             print(f"  F1: {metrics['f1']:.3f}")
-            log_metrics_to_wandb(
-                wandb_module=wandb_module,
-                prompt_path=prompt_path,
-                state=state,
-                metrics=metrics,
-                model_name=args.model_name,
-                database_path=args.database_path,
-                max_new_tokens=args.max_new_tokens,
-                limit=args.limit,
-            )
-            print(f"  W&B run: {prompt_path.stem}_{state.value}")
+            if wandb_module is not None:
+                log_metrics_to_wandb(
+                    wandb_module=wandb_module,
+                    prompt_path=prompt_path,
+                    state=state,
+                    metrics=metrics,
+                    model_name=args.model_name,
+                    database_path=args.database_path,
+                    max_new_tokens=args.max_new_tokens,
+                    limit=args.limit,
+                )
+                print(f"  W&B run: {prompt_path.stem}_{state.value}")
 
 
 if __name__ == "__main__":
