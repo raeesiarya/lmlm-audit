@@ -94,6 +94,19 @@ def choose_answer(
     return "", "empty"
 
 
+def compute_generation_budget(
+    tokenizer: Any,
+    prompt_text: str,
+    target_answer_tokens: int,
+) -> int:
+    prompt_token_count = len(tokenizer.encode(prompt_text, add_special_tokens=False))
+
+    # LMLM uses `max_new_tokens` both as the per-step generation cap and as an
+    # overall stopping budget over prompt + decoded text, so we need extra slack
+    # for lookup markup before the retrieved value appears.
+    return max(32, prompt_token_count + target_answer_tokens + 16)
+
+
 def generate_answer(
     model: Any,
     tokenizer: Any,
@@ -102,10 +115,15 @@ def generate_answer(
     enable_dblookup: bool = True,
 ) -> tuple[str, str, str, list[str], str, str]:
     prepared_prompt = prepare_prompt(prompt_text)
+    generation_budget = compute_generation_budget(
+        tokenizer=tokenizer,
+        prompt_text=prepared_prompt,
+        target_answer_tokens=max_new_tokens,
+    )
     raw_output = model.generate_with_lookup(
         prompt=prepared_prompt,
         tokenizer=tokenizer,
-        max_new_tokens=max_new_tokens,
+        max_new_tokens=generation_budget,
         enable_dblookup=enable_dblookup,
         enable_postprocess=False,
         max_lookup_limit=3,
