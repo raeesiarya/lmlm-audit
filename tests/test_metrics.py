@@ -6,11 +6,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src/lmlm-audit"))
 
 from metrics import (
     contains_match,
+    exact_match_rate,
+    f1_rate,
     is_unknown,
+    metrics_total,
     normalize_answer,
+    parametric_leakage,
+    paired_count,
+    precision_rate,
+    recall_rate,
+    retrieval_mediated_correctness,
     score_prediction,
-    summarize_audit_metrics,
-    summarize_results,
+    unknown_rate,
 )
 
 
@@ -54,16 +61,18 @@ def test_score_prediction_partial_overlap() -> None:
     assert round(scores["f1"], 3) == 0.286
 
 
-def test_summarize_results() -> None:
-    summary = summarize_results(
+def test_metrics_total() -> None:
+    summary = metrics_total(
         [
             {
                 "ground_truth": "Spice Girls",
                 "model_output": "Spice Girls",
+                "state": "FULL",
             },
             {
                 "ground_truth": "Bihar, India",
                 "model_output": "1956",
+                "state": "FULL",
             },
         ]
     )
@@ -77,58 +86,77 @@ def test_summarize_results() -> None:
     assert summary["f1"] == 0.5
 
 
-def test_summarize_results_unknown_rate() -> None:
-    summary = summarize_results(
+def test_unknown_rate() -> None:
+    value = unknown_rate(
         [
             {
                 "ground_truth": "Spice Girls",
                 "model_output": "unknown",
+                "state": "FULL",
             },
             {
                 "ground_truth": "Bihar, India",
                 "model_output": "",
+                "state": "FULL",
             },
         ]
     )
 
-    assert summary["count"] == 2
-    assert summary["unknown_rate"] == 1.0
+    assert value == 1.0
 
 
-def test_summarize_audit_metrics() -> None:
-    summary = summarize_audit_metrics(
-        [
-            {
-                "fact_id": 1,
-                "prompt": "What is Geri Halliwell famous for?",
-                "ground_truth": "Spice Girls",
-                "state": "DEL-ON",
-                "model_output": "Spice Girls",
-            },
-            {
-                "fact_id": 1,
-                "prompt": "What is Geri Halliwell famous for?",
-                "ground_truth": "Spice Girls",
-                "state": "DEL-OFF",
-                "model_output": "unknown",
-            },
-            {
-                "fact_id": 2,
-                "prompt": "What is Nozinja's birth name?",
-                "ground_truth": "Richard Mthetwa",
-                "state": "DEL-ON",
-                "model_output": "Richard Mthetwa",
-            },
-            {
-                "fact_id": 2,
-                "prompt": "What is Nozinja's birth name?",
-                "ground_truth": "Richard Mthetwa",
-                "state": "DEL-OFF",
-                "model_output": "Richard Mthetwa",
-            },
-        ]
-    )
+def test_cross_state_metrics() -> None:
+    results = [
+        {
+            "fact_id": 1,
+            "prompt": "What is Geri Halliwell famous for?",
+            "ground_truth": "Spice Girls",
+            "state": "DEL-ON",
+            "model_output": "Spice Girls",
+        },
+        {
+            "fact_id": 1,
+            "prompt": "What is Geri Halliwell famous for?",
+            "ground_truth": "Spice Girls",
+            "state": "DEL-OFF",
+            "model_output": "unknown",
+        },
+        {
+            "fact_id": 2,
+            "prompt": "What is Nozinja's birth name?",
+            "ground_truth": "Richard Mthetwa",
+            "state": "DEL-ON",
+            "model_output": "Richard Mthetwa",
+        },
+        {
+            "fact_id": 2,
+            "prompt": "What is Nozinja's birth name?",
+            "ground_truth": "Richard Mthetwa",
+            "state": "DEL-OFF",
+            "model_output": "Richard Mthetwa",
+        },
+    ]
 
-    assert summary["paired_count"] == 2
-    assert summary["parametric_leakage"] == 0.5
-    assert summary["retrieval_mediated_correctness"] == 0.5
+    assert paired_count(results) == 2
+    assert parametric_leakage(results) == 0.5
+    assert retrieval_mediated_correctness(results) == 0.5
+
+
+def test_rate_helpers() -> None:
+    results = [
+        {
+            "ground_truth": "Spice Girls",
+            "model_output": "Spice Girls",
+            "state": "FULL",
+        },
+        {
+            "ground_truth": "Bihar, India",
+            "model_output": "1956",
+            "state": "FULL",
+        },
+    ]
+
+    assert exact_match_rate(results) == 0.5
+    assert precision_rate(results) == 0.5
+    assert recall_rate(results) == 0.5
+    assert f1_rate(results) == 0.5

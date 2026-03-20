@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 
 from prompting import load_prompts
-from metrics import summarize_audit_metrics, summarize_results
+from metrics import metrics_total
 from database_states import DatabaseState, build_state_db_manager, retrieval_enabled
 
 
@@ -413,20 +413,20 @@ def main() -> None:
 
         output_path = args.output_dir / f"{prompt_path.stem}_results.jsonl"
         save_results(results, output_path)
-        audit_metrics = summarize_audit_metrics(results)
+        total_metrics = metrics_total(results)
         metrics_by_state = {
-            state.value: summarize_results(
+            state.value: metrics_total(
                 [result for result in results if result["state"] == state.value]
             )
             for state in states
         }
 
         print("Cross-state audit metrics:")
-        print(f"  Paired count: {audit_metrics['paired_count']}")
-        print(f"  Parametric leakage L(f): {audit_metrics['parametric_leakage']:.3f}")
+        print(f"  Paired count: {total_metrics['paired_count']}")
+        print(f"  Parametric leakage L(f): {total_metrics['parametric_leakage']:.3f}")
         print(
             "  Retrieval-mediated correctness R(f): "
-            f"{audit_metrics['retrieval_mediated_correctness']:.3f}"
+            f"{total_metrics['retrieval_mediated_correctness']:.3f}"
         )
         print("Metrics by state:")
         for state in states:
@@ -440,7 +440,7 @@ def main() -> None:
             print(f"  Recall: {metrics['recall']:.3f}")
             print(f"  F1: {metrics['f1']:.3f}")
             if wandb_module is not None:
-                combined_metrics = {**metrics, **audit_metrics}
+                combined_metrics = {**metrics, **total_metrics}
                 log_metrics_to_wandb(
                     wandb_module=wandb_module,
                     prompt_path=prompt_path,

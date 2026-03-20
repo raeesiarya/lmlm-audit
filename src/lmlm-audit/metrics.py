@@ -81,42 +81,46 @@ def score_prediction(prediction: str, ground_truth: str) -> dict[str, float]:
     }
 
 
-def summarize_results(results: list[dict[str, Any]]) -> dict[str, float]:
+def count(results: list[dict[str, Any]]) -> int:
+    return len(results)
+
+
+def _average_metric(
+    results: list[dict[str, Any]],
+    metric_name: str,
+) -> float:
     if not results:
-        return {
-            "count": 0,
-            "exact_match": 0.0,
-            "contains_match": 0.0,
-            "unknown_rate": 0.0,
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1": 0.0,
-        }
+        return 0.0
 
-    totals = {
-        "exact_match": 0.0,
-        "contains_match": 0.0,
-        "unknown": 0.0,
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1": 0.0,
-    }
-
+    total = 0.0
     for result in results:
         scores = score_prediction(result["model_output"], result["ground_truth"])
-        for metric_name in totals:
-            totals[metric_name] += scores[metric_name]
+        total += scores[metric_name]
+    return total / len(results)
 
-    count = len(results)
-    return {
-        "count": count,
-        "exact_match": totals["exact_match"] / count,
-        "contains_match": totals["contains_match"] / count,
-        "unknown_rate": totals["unknown"] / count,
-        "precision": totals["precision"] / count,
-        "recall": totals["recall"] / count,
-        "f1": totals["f1"] / count,
-    }
+
+def exact_match_rate(results: list[dict[str, Any]]) -> float:
+    return _average_metric(results, "exact_match")
+
+
+def contains_match_rate(results: list[dict[str, Any]]) -> float:
+    return _average_metric(results, "contains_match")
+
+
+def unknown_rate(results: list[dict[str, Any]]) -> float:
+    return _average_metric(results, "unknown")
+
+
+def precision_rate(results: list[dict[str, Any]]) -> float:
+    return _average_metric(results, "precision")
+
+
+def recall_rate(results: list[dict[str, Any]]) -> float:
+    return _average_metric(results, "recall")
+
+
+def f1_rate(results: list[dict[str, Any]]) -> float:
+    return _average_metric(results, "f1")
 
 
 def _result_group_key(result: dict[str, Any]) -> tuple[Any, str, str]:
@@ -137,24 +141,43 @@ def _group_results_by_fact(
     return grouped
 
 
-def summarize_audit_metrics(results: list[dict[str, Any]]) -> dict[str, float]:
+def _eligible_state_groups(
+    results: list[dict[str, Any]],
+) -> list[dict[str, dict[str, Any]]]:
     grouped_results = _group_results_by_fact(results)
-    eligible_groups = [
+    return [
         state_results
         for state_results in grouped_results.values()
         if "DEL-ON" in state_results and "DEL-OFF" in state_results
     ]
 
+
+def paired_count(results: list[dict[str, Any]]) -> int:
+    return len(_eligible_state_groups(results))
+
+
+def parametric_leakage(results: list[dict[str, Any]]) -> float:
+    eligible_groups = _eligible_state_groups(results)
     if not eligible_groups:
-        return {
-            "paired_count": 0,
-            "parametric_leakage": 0.0,
-            "retrieval_mediated_correctness": 0.0,
-        }
+        return 0.0
 
     leakage_total = 0.0
-    retrieval_total = 0.0
+    for state_results in eligible_groups:
+        del_off_result = state_results["DEL-OFF"]
+        leakage_total += exact_match(
+            del_off_result["model_output"],
+            del_off_result["ground_truth"],
+        )
 
+    return leakage_total / len(eligible_groups)
+
+
+def retrieval_mediated_correctness(results: list[dict[str, Any]]) -> float:
+    eligible_groups = _eligible_state_groups(results)
+    if not eligible_groups:
+        return 0.0
+
+    retrieval_total = 0.0
     for state_results in eligible_groups:
         del_on_result = state_results["DEL-ON"]
         del_off_result = state_results["DEL-OFF"]
@@ -168,12 +191,21 @@ def summarize_audit_metrics(results: list[dict[str, Any]]) -> dict[str, float]:
             del_off_result["ground_truth"],
         )
 
-        leakage_total += del_off_correct
         retrieval_total += float(del_on_correct == 1.0 and del_off_correct == 0.0)
 
-    paired_count = len(eligible_groups)
+    return retrieval_total / len(eligible_groups)
+
+
+def metrics_total(results: list[dict[str, Any]]) -> dict[str, float]:
     return {
-        "paired_count": paired_count,
-        "parametric_leakage": leakage_total / paired_count,
-        "retrieval_mediated_correctness": retrieval_total / paired_count,
+        "count": count(results),
+        "exact_match": exact_match_rate(results),
+        "contains_match": contains_match_rate(results),
+        "unknown_rate": unknown_rate(results),
+        "precision": precision_rate(results),
+        "recall": recall_rate(results),
+        "f1": f1_rate(results),
+        "paired_count": paired_count(results),
+        "parametric_leakage": parametric_leakage(results),
+        "retrieval_mediated_correctness": retrieval_mediated_correctness(results),
     }
