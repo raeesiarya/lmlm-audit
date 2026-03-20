@@ -4,7 +4,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src/lmlm-audit"))
 
-from metrics import contains_match, is_unknown, normalize_answer, score_prediction, summarize_results
+from metrics import (
+    contains_match,
+    is_unknown,
+    normalize_answer,
+    score_prediction,
+    summarize_audit_metrics,
+    summarize_results,
+)
 
 
 def test_normalize_answer() -> None:
@@ -86,3 +93,42 @@ def test_summarize_results_unknown_rate() -> None:
 
     assert summary["count"] == 2
     assert summary["unknown_rate"] == 1.0
+
+
+def test_summarize_audit_metrics() -> None:
+    summary = summarize_audit_metrics(
+        [
+            {
+                "fact_id": 1,
+                "prompt": "What is Geri Halliwell famous for?",
+                "ground_truth": "Spice Girls",
+                "state": "DEL-ON",
+                "model_output": "Spice Girls",
+            },
+            {
+                "fact_id": 1,
+                "prompt": "What is Geri Halliwell famous for?",
+                "ground_truth": "Spice Girls",
+                "state": "DEL-OFF",
+                "model_output": "unknown",
+            },
+            {
+                "fact_id": 2,
+                "prompt": "What is Nozinja's birth name?",
+                "ground_truth": "Richard Mthetwa",
+                "state": "DEL-ON",
+                "model_output": "Richard Mthetwa",
+            },
+            {
+                "fact_id": 2,
+                "prompt": "What is Nozinja's birth name?",
+                "ground_truth": "Richard Mthetwa",
+                "state": "DEL-OFF",
+                "model_output": "Richard Mthetwa",
+            },
+        ]
+    )
+
+    assert summary["paired_count"] == 2
+    assert summary["parametric_leakage"] == 0.5
+    assert summary["retrieval_mediated_correctness"] == 0.5
