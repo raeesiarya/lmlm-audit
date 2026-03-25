@@ -2,33 +2,59 @@ import re
 from collections import Counter
 from typing import Any
 
+from equivalence import normalize_text, values_equivalent
+
 
 TOKEN_PATTERN = re.compile(r"\d+\.\d+|\w+(?:[-']\w+)*", re.UNICODE)
 
 
 def tokenize(text: str) -> list[str]:
-    return TOKEN_PATTERN.findall(text.casefold())
+    return TOKEN_PATTERN.findall(str(text).casefold())
 
 
 def normalize_answer(text: str) -> str:
-    return " ".join(tokenize(text))
+    return normalize_text(text)
 
 
-def exact_match(prediction: str, ground_truth: str) -> float:
-    return float(normalize_answer(prediction) == normalize_answer(ground_truth))
+def exact_match(
+    prediction: str,
+    ground_truth: str,
+    ground_truth_aliases: list[str] | tuple[str, ...] | None = None,
+) -> float:
+    return float(
+        values_equivalent(
+            prediction,
+            ground_truth,
+            right_aliases=ground_truth_aliases,
+        )
+    )
 
 
-def contains_match(prediction: str, ground_truth: str) -> float:
+def contains_match(
+    prediction: str,
+    ground_truth: str,
+    ground_truth_aliases: list[str] | tuple[str, ...] | None = None,
+) -> float:
+    if exact_match(prediction, ground_truth, ground_truth_aliases=ground_truth_aliases):
+        return 1.0
+
     normalized_prediction = normalize_answer(prediction)
-    normalized_ground_truth = normalize_answer(ground_truth)
+    candidate_truths = [ground_truth, *(ground_truth_aliases or ())]
 
-    if not normalized_prediction or not normalized_ground_truth:
+    if not normalized_prediction or not candidate_truths:
         return 0.0
 
-    return float(
-        normalized_ground_truth in normalized_prediction
-        or normalized_prediction in normalized_ground_truth
-    )
+    for candidate_truth in candidate_truths:
+        normalized_ground_truth = normalize_answer(candidate_truth)
+        if not normalized_ground_truth:
+            continue
+        if (
+            normalized_ground_truth in normalized_prediction
+            or normalized_prediction in normalized_ground_truth
+        ):
+            return 1.0
+
+    return 0.0
 
 
 def is_unknown(prediction: str) -> float:
@@ -47,7 +73,14 @@ def is_unknown(prediction: str) -> float:
     return float(normalized_prediction in unknown_values)
 
 
-def precision_recall_f1(prediction: str, ground_truth: str) -> dict[str, float]:
+def precision_recall_f1(
+    prediction: str,
+    ground_truth: str,
+    ground_truth_aliases: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, float]:
+    if exact_match(prediction, ground_truth, ground_truth_aliases=ground_truth_aliases):
+        return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+
     pred_tokens = tokenize(prediction)
     gold_tokens = tokenize(ground_truth)
 
@@ -71,11 +104,27 @@ def precision_recall_f1(prediction: str, ground_truth: str) -> dict[str, float]:
     return {"precision": precision, "recall": recall, "f1": f1}
 
 
-def score_prediction(prediction: str, ground_truth: str) -> dict[str, float]:
-    overlap_scores = precision_recall_f1(prediction, ground_truth)
+def score_prediction(
+    prediction: str,
+    ground_truth: str,
+    ground_truth_aliases: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, float]:
+    overlap_scores = precision_recall_f1(
+        prediction,
+        ground_truth,
+        ground_truth_aliases=ground_truth_aliases,
+    )
     return {
-        "exact_match": exact_match(prediction, ground_truth),
-        "contains_match": contains_match(prediction, ground_truth),
+        "exact_match": exact_match(
+            prediction,
+            ground_truth,
+            ground_truth_aliases=ground_truth_aliases,
+        ),
+        "contains_match": contains_match(
+            prediction,
+            ground_truth,
+            ground_truth_aliases=ground_truth_aliases,
+        ),
         "unknown": is_unknown(prediction),
         **overlap_scores,
     }
@@ -94,7 +143,11 @@ def _average_metric(
 
     total = 0.0
     for result in results:
-        scores = score_prediction(result["model_output"], result["ground_truth"])
+        scores = score_prediction(
+            result["model_output"],
+            result["ground_truth"],
+            ground_truth_aliases=result.get("object_aliases"),
+        )
         total += scores[metric_name]
     return total / len(results)
 
@@ -167,6 +220,7 @@ def parametric_leakage(results: list[dict[str, Any]]) -> float:
         leakage_total += exact_match(
             del_off_result["model_output"],
             del_off_result["ground_truth"],
+            ground_truth_aliases=del_off_result.get("object_aliases"),
         )
 
     return leakage_total / len(eligible_groups)
@@ -185,15 +239,53 @@ def retrieval_mediated_correctness(results: list[dict[str, Any]]) -> float:
         del_on_correct = exact_match(
             del_on_result["model_output"],
             del_on_result["ground_truth"],
+            ground_truth_aliases=del_on_result.get("object_aliases"),
         )
         del_off_correct = exact_match(
             del_off_result["model_output"],
             del_off_result["ground_truth"],
+            ground_truth_aliases=del_off_result.get("object_aliases"),
         )
 
         retrieval_total += float(del_on_correct == 1.0 and del_off_correct == 0.0)
 
     return retrieval_total / len(eligible_groups)
+
+
+def trace_has_gold_equivalent(result: dict[str, Any]) -> bool:
+    retrieval_trace = result.get("retrieval_trace") or {}
+    retained_candidates = retrieval_trace.get("retained_candidates") or []
+    ground_truth_aliases = result.get("object_aliases")
+
+    for candidate in retained_candidates:
+        if values_equivalent(
+            candidate.get("object", ""),
+            result["ground_truth"],
+            right_aliases=ground_truth_aliases,
+        ):
+            return True
+
+    return False
+
+
+def retrieval_artifact_rate(results: list[dict[str, Any]]) -> float:
+    eligible_groups = _eligible_state_groups(results)
+    if not eligible_groups:
+        return 0.0
+
+    artifact_total = 0.0
+    for state_results in eligible_groups:
+        del_on_result = state_results["DEL-ON"]
+        del_on_correct = exact_match(
+            del_on_result["model_output"],
+            del_on_result["ground_truth"],
+            ground_truth_aliases=del_on_result.get("object_aliases"),
+        )
+        artifact_total += float(
+            del_on_correct == 1.0 and not trace_has_gold_equivalent(del_on_result)
+        )
+
+    return artifact_total / len(eligible_groups)
 
 
 def metrics_total(results: list[dict[str, Any]]) -> dict[str, float]:
@@ -208,4 +300,5 @@ def metrics_total(results: list[dict[str, Any]]) -> dict[str, float]:
         "paired_count": paired_count(results),
         "parametric_leakage": parametric_leakage(results),
         "retrieval_mediated_correctness": retrieval_mediated_correctness(results),
+        "retrieval_artifact_rate": retrieval_artifact_rate(results),
     }
