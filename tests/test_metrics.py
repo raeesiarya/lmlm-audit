@@ -15,8 +15,10 @@ from metrics import (
     paired_count,
     precision_rate,
     recall_rate,
+    retrieval_artifact_rate,
     retrieval_mediated_correctness,
     score_prediction,
+    trace_has_gold_equivalent,
     unknown_rate,
 )
 
@@ -31,6 +33,19 @@ def test_score_prediction_exact_match() -> None:
     assert scores["exact_match"] == 1.0
     assert scores["contains_match"] == 1.0
     assert scores["unknown"] == 0.0
+    assert scores["precision"] == 1.0
+    assert scores["recall"] == 1.0
+    assert scores["f1"] == 1.0
+
+
+def test_score_prediction_alias_match() -> None:
+    scores = score_prediction(
+        "Jorgensen",
+        "Jørgensen",
+        ground_truth_aliases=["Jorgensen"],
+    )
+    assert scores["exact_match"] == 1.0
+    assert scores["contains_match"] == 1.0
     assert scores["precision"] == 1.0
     assert scores["recall"] == 1.0
     assert scores["f1"] == 1.0
@@ -84,6 +99,7 @@ def test_metrics_total() -> None:
     assert summary["precision"] == 0.5
     assert summary["recall"] == 0.5
     assert summary["f1"] == 0.5
+    assert summary["retrieval_artifact_rate"] == 0.0
 
 
 def test_unknown_rate() -> None:
@@ -113,6 +129,12 @@ def test_cross_state_metrics() -> None:
             "ground_truth": "Spice Girls",
             "state": "DEL-ON",
             "model_output": "Spice Girls",
+            "object_aliases": [],
+            "retrieval_trace": {
+                "retained_candidates": [
+                    {"object": "Spice Girls"},
+                ]
+            },
         },
         {
             "fact_id": 1,
@@ -120,6 +142,7 @@ def test_cross_state_metrics() -> None:
             "ground_truth": "Spice Girls",
             "state": "DEL-OFF",
             "model_output": "unknown",
+            "object_aliases": [],
         },
         {
             "fact_id": 2,
@@ -127,6 +150,12 @@ def test_cross_state_metrics() -> None:
             "ground_truth": "Richard Mthetwa",
             "state": "DEL-ON",
             "model_output": "Richard Mthetwa",
+            "object_aliases": [],
+            "retrieval_trace": {
+                "retained_candidates": [
+                    {"object": "someone else"},
+                ]
+            },
         },
         {
             "fact_id": 2,
@@ -134,12 +163,43 @@ def test_cross_state_metrics() -> None:
             "ground_truth": "Richard Mthetwa",
             "state": "DEL-OFF",
             "model_output": "Richard Mthetwa",
+            "object_aliases": [],
         },
     ]
 
     assert paired_count(results) == 2
     assert parametric_leakage(results) == 0.5
     assert retrieval_mediated_correctness(results) == 0.5
+    assert retrieval_artifact_rate(results) == 0.5
+
+
+def test_retrieval_artifact_rate() -> None:
+    results = [
+        {
+            "fact_id": 1,
+            "prompt": "What is Geri Halliwell famous for?",
+            "ground_truth": "Spice Girls",
+            "state": "DEL-ON",
+            "model_output": "Spice Girls",
+            "object_aliases": [],
+            "retrieval_trace": {
+                "retained_candidates": [
+                    {"object": "girl group"},
+                ]
+            },
+        },
+        {
+            "fact_id": 1,
+            "prompt": "What is Geri Halliwell famous for?",
+            "ground_truth": "Spice Girls",
+            "state": "DEL-OFF",
+            "model_output": "unknown",
+            "object_aliases": [],
+        },
+    ]
+
+    assert trace_has_gold_equivalent(results[0]) is False
+    assert retrieval_artifact_rate(results) == 1.0
 
 
 def test_rate_helpers() -> None:
