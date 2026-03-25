@@ -10,6 +10,7 @@ from tqdm import tqdm
 from prompting import load_prompts
 from metrics import metrics_total
 from database_states import DatabaseState, build_state_db_manager, retrieval_enabled
+from equivalence import prompt_row_aliases
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -196,6 +197,21 @@ def generate_answer(
     return final_output
 
 
+def _default_retrieval_trace(state: DatabaseState) -> dict[str, Any]:
+    return {
+        "state": state.value,
+        "retrieval_enabled": retrieval_enabled(state),
+        "lookup_query": None,
+        "threshold": None,
+        "all_candidates": [],
+        "deleted_candidates": [],
+        "retained_candidates": [],
+        "selected_candidate": None,
+        "selected_value": None,
+        "error": None,
+    }
+
+
 def run_prompt_audit(
     base_db_manager: Any,
     model: Any,
@@ -209,6 +225,9 @@ def run_prompt_audit(
         prompt_row=prompt_row,
         state=state,
     )
+    if hasattr(model.db_manager, "reset_trace"):
+        model.db_manager.reset_trace()
+
     answer = generate_answer(
         model=model,
         tokenizer=tokenizer,
@@ -216,15 +235,20 @@ def run_prompt_audit(
         max_new_tokens=max_new_tokens,
         enable_dblookup=retrieval_enabled(state),
     )
+    retrieval_trace = getattr(model.db_manager, "last_trace", None)
 
     return {
         "fact_id": prompt_row["fact_id"],
         "subject": prompt_row["subject"],
+        "subject_aliases": list(prompt_row_aliases(prompt_row, "subject")),
         "relation": prompt_row["relation"],
+        "relation_aliases": list(prompt_row_aliases(prompt_row, "relation")),
         "state": state.value,
         "prompt": prompt_row["prompt_text"],
         "ground_truth": prompt_row["gold_object"],
+        "object_aliases": list(prompt_row_aliases(prompt_row, "object")),
         "model_output": answer,
+        "retrieval_trace": retrieval_trace or _default_retrieval_trace(state),
     }
 
 
@@ -428,6 +452,7 @@ def main() -> None:
             "  Retrieval-mediated correctness R(f): "
             f"{total_metrics['retrieval_mediated_correctness']:.3f}"
         )
+        print(f"  Retrieval artifact rate: {total_metrics['retrieval_artifact_rate']:.3f}")
         print("Metrics by state:")
         for state in states:
             metrics = metrics_by_state[state.value]
