@@ -8,6 +8,7 @@ from database_states import (
     AuditDatabaseManager,
     DatabaseState,
     TargetFact,
+    candidate_supports_target_fact,
     extract_lookup_query,
     is_deleted_triplet,
     retrieval_enabled,
@@ -102,6 +103,27 @@ def test_is_deleted_triplet() -> None:
     )
 
 
+def test_candidate_supports_target_fact_flags() -> None:
+    target_fact = TargetFact(
+        fact_id=10,
+        subject="Hexol",
+        subject_aliases=(),
+        relation="First Described By",
+        relation_aliases=(),
+        object="Jørgensen",
+        object_aliases=("Jorgensen",),
+    )
+
+    assert candidate_supports_target_fact(
+        ("Hexol", "First Described By", "Jorgensen"),
+        target_fact,
+    ) == (True, True, True, True)
+    assert candidate_supports_target_fact(
+        ("Hexol", "Structure Recognized By", "Jorgensen"),
+        target_fact,
+    ) == (True, False, True, False)
+
+
 def test_audit_database_manager_filters_deleted_fact() -> None:
     base_manager = FakeBaseManager()
     target_fact = TargetFact(
@@ -131,6 +153,12 @@ def test_audit_database_manager_filters_deleted_fact() -> None:
     assert len(audit_manager.last_trace["all_candidates"]) == 3
     assert len(audit_manager.last_trace["deleted_candidates"]) == 1
     assert audit_manager.last_trace["deleted_candidates"][0]["object"] == "Jorgensen"
+    assert audit_manager.last_trace["deleted_candidates"][0]["matches_subject"] is True
+    assert audit_manager.last_trace["deleted_candidates"][0]["matches_relation"] is True
+    assert audit_manager.last_trace["deleted_candidates"][0]["matches_object"] is True
+    assert audit_manager.last_trace["deleted_candidates"][0]["supports_target_fact"] is True
+    assert audit_manager.last_trace["selected_candidate"]["matches_relation"] is False
+    assert audit_manager.last_trace["selected_candidate"]["supports_target_fact"] is False
     assert audit_manager.last_trace["selected_value"] == "Werner"
 
 

@@ -255,14 +255,27 @@ def retrieval_mediated_correctness(results: list[dict[str, Any]]) -> float:
 def trace_has_gold_equivalent(result: dict[str, Any]) -> bool:
     retrieval_trace = result.get("retrieval_trace") or {}
     retained_candidates = retrieval_trace.get("retained_candidates") or []
-    ground_truth_aliases = result.get("object_aliases")
 
     for candidate in retained_candidates:
-        if values_equivalent(
+        if candidate.get("supports_target_fact") is True:
+            return True
+
+        subject_matches = values_equivalent(
+            candidate.get("subject", ""),
+            result.get("subject", ""),
+            right_aliases=result.get("subject_aliases"),
+        )
+        relation_matches = values_equivalent(
+            candidate.get("relation", ""),
+            result.get("relation", ""),
+            right_aliases=result.get("relation_aliases"),
+        )
+        object_matches = values_equivalent(
             candidate.get("object", ""),
             result["ground_truth"],
-            right_aliases=ground_truth_aliases,
-        ):
+            right_aliases=result.get("object_aliases"),
+        )
+        if subject_matches and relation_matches and object_matches:
             return True
 
     return False

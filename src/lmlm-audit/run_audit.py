@@ -1,4 +1,5 @@
 import argparse
+import html
 import json
 import os
 import re
@@ -21,6 +22,9 @@ LOOKUP_VALUE_PATTERN = re.compile(
     r"<\|db_entity\|>.*?<\|db_relationship\|>.*?<\|db_return\|>\s*(.*?)\s*<\|db_end\|>",
     re.DOTALL,
 )
+DB_MARKUP_SPAN_PATTERN = re.compile(r"<\|db_[^|]+\|>.*?<\|db_end\|>", re.DOTALL)
+DB_SPECIAL_TOKEN_PATTERN = re.compile(r"<\|db_[^|]+\|>")
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 
 
 def prepare_prompt(prompt_text: str) -> str:
@@ -50,6 +54,10 @@ def clean_answer(answer_text: str) -> str:
         if marker in answer_text:
             answer_text = answer_text.split(marker, 1)[0].strip()
 
+    answer_text = html.unescape(answer_text)
+    answer_text = DB_MARKUP_SPAN_PATTERN.sub(" ", answer_text)
+    answer_text = DB_SPECIAL_TOKEN_PATTERN.sub(" ", answer_text)
+    answer_text = HTML_TAG_PATTERN.sub(" ", answer_text)
     answer_text = re.sub(r"\s+", " ", answer_text).strip()
     answer_text = answer_text.strip(" \t\n\r\"'`")
 

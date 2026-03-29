@@ -59,6 +59,35 @@ def is_deleted_triplet(triplet: tuple[str, str, str], target_fact: TargetFact) -
     )
 
 
+def candidate_supports_target_fact(
+    triplet: tuple[str, str, str],
+    target_fact: TargetFact,
+) -> tuple[bool, bool, bool, bool]:
+    subject, relation, obj = triplet
+    matches_subject = values_equivalent(
+        subject,
+        target_fact.subject,
+        right_aliases=target_fact.subject_aliases,
+    )
+    matches_relation = values_equivalent(
+        relation,
+        target_fact.relation,
+        right_aliases=target_fact.relation_aliases,
+    )
+    matches_object = values_equivalent(
+        obj,
+        target_fact.object,
+        right_aliases=target_fact.object_aliases,
+    )
+    supports_target_fact = matches_subject and matches_relation and matches_object
+    return (
+        matches_subject,
+        matches_relation,
+        matches_object,
+        supports_target_fact,
+    )
+
+
 def extract_lookup_query(prompt: str) -> tuple[str, str]:
     matches = {
         tuple(match)
@@ -145,11 +174,27 @@ class AuditDatabaseManager:
         candidate: tuple[str, str, str, float],
     ) -> dict[str, Any]:
         subject, relation, obj, score = candidate
+        matches_subject = False
+        matches_relation = False
+        matches_object = False
+        supports_target_fact = False
+        if self.target_fact is not None:
+            (
+                matches_subject,
+                matches_relation,
+                matches_object,
+                supports_target_fact,
+            ) = candidate_supports_target_fact(candidate[:3], self.target_fact)
+
         return {
             "subject": subject,
             "relation": relation,
             "object": obj,
             "score": score,
+            "matches_subject": matches_subject,
+            "matches_relation": matches_relation,
+            "matches_object": matches_object,
+            "supports_target_fact": supports_target_fact,
             "matches_deleted_fact": (
                 self.target_fact is not None and is_deleted_triplet(candidate[:3], self.target_fact)
             ),
@@ -173,8 +218,8 @@ class AuditDatabaseManager:
         try:
             entity, relationship = extract_lookup_query(prompt)
             trace["lookup_query"] = {
-                "entity": entity,
-                "relation": relationship,
+                "entity": entity.strip(),
+                "relation": relationship.strip(),
             }
 
             self.init_topk_retriever()

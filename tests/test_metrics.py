@@ -126,19 +126,32 @@ def test_cross_state_metrics() -> None:
         {
             "fact_id": 1,
             "prompt": "What is Geri Halliwell famous for?",
+            "subject": "Geri Halliwell",
+            "subject_aliases": [],
+            "relation": "Famous For",
+            "relation_aliases": [],
             "ground_truth": "Spice Girls",
             "state": "DEL-ON",
             "model_output": "Spice Girls",
             "object_aliases": [],
             "retrieval_trace": {
                 "retained_candidates": [
-                    {"object": "Spice Girls"},
+                    {
+                        "subject": "Geri Halliwell",
+                        "relation": "Famous For",
+                        "object": "Spice Girls",
+                        "supports_target_fact": True,
+                    },
                 ]
             },
         },
         {
             "fact_id": 1,
             "prompt": "What is Geri Halliwell famous for?",
+            "subject": "Geri Halliwell",
+            "subject_aliases": [],
+            "relation": "Famous For",
+            "relation_aliases": [],
             "ground_truth": "Spice Girls",
             "state": "DEL-OFF",
             "model_output": "unknown",
@@ -147,19 +160,32 @@ def test_cross_state_metrics() -> None:
         {
             "fact_id": 2,
             "prompt": "What is Nozinja's birth name?",
+            "subject": "Nozinja",
+            "subject_aliases": [],
+            "relation": "Birth Name",
+            "relation_aliases": [],
             "ground_truth": "Richard Mthetwa",
             "state": "DEL-ON",
             "model_output": "Richard Mthetwa",
             "object_aliases": [],
             "retrieval_trace": {
                 "retained_candidates": [
-                    {"object": "someone else"},
+                    {
+                        "subject": "Nozinja",
+                        "relation": "Birth Place",
+                        "object": "Richard Mthetwa",
+                        "supports_target_fact": False,
+                    },
                 ]
             },
         },
         {
             "fact_id": 2,
             "prompt": "What is Nozinja's birth name?",
+            "subject": "Nozinja",
+            "subject_aliases": [],
+            "relation": "Birth Name",
+            "relation_aliases": [],
             "ground_truth": "Richard Mthetwa",
             "state": "DEL-OFF",
             "model_output": "Richard Mthetwa",
@@ -178,19 +204,32 @@ def test_retrieval_artifact_rate() -> None:
         {
             "fact_id": 1,
             "prompt": "What is Geri Halliwell famous for?",
+            "subject": "Geri Halliwell",
+            "subject_aliases": [],
+            "relation": "Famous For",
+            "relation_aliases": [],
             "ground_truth": "Spice Girls",
             "state": "DEL-ON",
             "model_output": "Spice Girls",
             "object_aliases": [],
             "retrieval_trace": {
                 "retained_candidates": [
-                    {"object": "girl group"},
+                    {
+                        "subject": "Geri Halliwell",
+                        "relation": "Famous For",
+                        "object": "girl group",
+                        "supports_target_fact": False,
+                    },
                 ]
             },
         },
         {
             "fact_id": 1,
             "prompt": "What is Geri Halliwell famous for?",
+            "subject": "Geri Halliwell",
+            "subject_aliases": [],
+            "relation": "Famous For",
+            "relation_aliases": [],
             "ground_truth": "Spice Girls",
             "state": "DEL-OFF",
             "model_output": "unknown",
@@ -200,6 +239,29 @@ def test_retrieval_artifact_rate() -> None:
 
     assert trace_has_gold_equivalent(results[0]) is False
     assert retrieval_artifact_rate(results) == 1.0
+
+
+def test_trace_has_gold_equivalent_requires_subject_and_relation_match() -> None:
+    result = {
+        "subject": "Vishnevka",
+        "subject_aliases": [],
+        "relation": "Rural Localities As Of 2012",
+        "relation_aliases": [],
+        "ground_truth": "1",
+        "object_aliases": [],
+        "retrieval_trace": {
+            "retained_candidates": [
+                {
+                    "subject": "Novgorod Oblast",
+                    "relation": "Vishnevka Rural Localities As Of 2012",
+                    "object": "1",
+                    "supports_target_fact": False,
+                }
+            ]
+        },
+    }
+
+    assert trace_has_gold_equivalent(result) is False
 
 
 def test_rate_helpers() -> None:
