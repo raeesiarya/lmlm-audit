@@ -344,7 +344,7 @@ def log_metrics_to_wandb(
         reinit="finish_previous",
     )
     metrics_payload = {
-        **state_metrics,
+        **{f"state/{key}": value for key, value in state_metrics.items()},
         **{f"cross_state/{key}": value for key, value in cross_state_metrics.items()},
     }
     run.log(metrics_payload)
