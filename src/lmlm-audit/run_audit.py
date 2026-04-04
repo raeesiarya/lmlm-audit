@@ -322,7 +322,8 @@ def log_metrics_to_wandb(
     wandb_module: Any,
     prompt_path: Path,
     state: DatabaseState,
-    metrics: dict[str, float],
+    state_metrics: dict[str, float],
+    cross_state_metrics: dict[str, float],
     model_name: str,
     database_path: Path,
     max_new_tokens: int,
@@ -340,10 +341,14 @@ def log_metrics_to_wandb(
             "max_new_tokens": max_new_tokens,
             "limit": limit,
         },
-        reinit=True,
+        reinit="finish_previous",
     )
-    run.log(metrics)
-    run.summary.update(metrics)
+    metrics_payload = {
+        **state_metrics,
+        **{f"cross_state/{key}": value for key, value in cross_state_metrics.items()},
+    }
+    run.log(metrics_payload)
+    run.summary.update(metrics_payload)
     run.finish()
 
 
@@ -473,12 +478,12 @@ def main() -> None:
             print(f"  Recall: {metrics['recall']:.3f}")
             print(f"  F1: {metrics['f1']:.3f}")
             if wandb_module is not None:
-                combined_metrics = {**metrics, **total_metrics}
                 log_metrics_to_wandb(
                     wandb_module=wandb_module,
                     prompt_path=prompt_path,
                     state=state,
-                    metrics=combined_metrics,
+                    state_metrics=metrics,
+                    cross_state_metrics=total_metrics,
                     model_name=args.model_name,
                     database_path=args.database_path,
                     max_new_tokens=args.max_new_tokens,
