@@ -465,7 +465,9 @@ def main() -> None:
             "  Retrieval-mediated correctness R(f): "
             f"{total_metrics['retrieval_mediated_correctness']:.3f}"
         )
-        print(f"  Retrieval artifact rate: {total_metrics['retrieval_artifact_rate']:.3f}")
+        print(
+            f"  Retrieval artifact rate: {total_metrics['retrieval_artifact_rate']:.3f}"
+        )
         print("Metrics by state:")
         for state in states:
             metrics = metrics_by_state[state.value]
@@ -477,6 +479,13 @@ def main() -> None:
             print(f"  Precision: {metrics['precision']:.3f}")
             print(f"  Recall: {metrics['recall']:.3f}")
             print(f"  F1: {metrics['f1']:.3f}")
+            print(f"  Parametric leakage L(f): {metrics['parametric_leakage']:.3f}")
+            print(
+                f"  Retrieval-mediated correctness R(f): {metrics['retrieval_mediated_correctness']:.3f}"
+            )
+            print(
+                f"  Retrieval artifact rate: {metrics['retrieval_artifact_rate']:.3f}"
+            )
             if wandb_module is not None:
                 log_metrics_to_wandb(
                     wandb_module=wandb_module,
